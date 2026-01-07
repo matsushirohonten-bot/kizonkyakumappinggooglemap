@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>既存客マッピング（本店）</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Noto Sans JP',sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);min-height:100vh;color:#e8e8e8;padding:20px}
+    .container{max-width:900px;margin:0 auto}
+    header{text-align:center;margin-bottom:30px}
+    h1{font-size:2rem;font-weight:700;background:linear-gradient(90deg,#00d9ff,#00ff88);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px}
+    .subtitle{color:#8892a0;font-size:.9rem}
+    .card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:24px;margin-bottom:20px;backdrop-filter:blur(10px)}
+    .card-title{font-size:1.1rem;font-weight:500;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+    .card-title .num{background:linear-gradient(135deg,#00d9ff,#00ff88);color:#1a1a2e;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem}
+    .upload-area{border:2px dashed rgba(0,217,255,.3);border-radius:12px;padding:40px;text-align:center;cursor:pointer;transition:all .3s ease}
+    .upload-area:hover{border-color:#00d9ff;background:rgba(0,217,255,.05)}
+    .upload-area.dragover{border-color:#00ff88;background:rgba(0,255,136,.1)}
+    .upload-icon{font-size:3rem;margin-bottom:10px}
+    .upload-text{color:#8892a0}
+    .upload-text strong{color:#00d9ff}
+    #fileInput{display:none}
+    .file-info{margin-top:16px;padding:12px 16px;background:rgba(0,255,136,.1);border-radius:8px;display:none}
+    .file-info.show{display:block}
+    .file-name{color:#00ff88;font-weight:500}
+    .btn{width:100%;padding:16px 24px;border:none;border-radius:12px;font-size:1.1rem;font-weight:600;cursor:pointer;transition:all .3s ease;font-family:inherit}
+    .btn-primary{background:linear-gradient(135deg,#00d9ff,#00ff88);color:#1a1a2e}
+    .btn-primary:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,217,255,.3)}
+    .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+
+    .stats-debug{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+    .stat-box{background:rgba(0,0,0,.2);border-radius:12px;padding:12px;text-align:center}
+    .stat-value{font-size:1.2rem;font-weight:700;margin-bottom:4px;color:#a0a0a0}
+    .stat-value.main{color:#00d9ff}
+    .stat-label{color:#8892a0;font-size:.75rem}
+
+    .results{display:none}
+    .results.show{display:block}
+    .download-list{display:flex;flex-direction:column;gap:12px}
+    .download-item{display:flex;align-items:center;justify-content:space-between;padding:16px;background:rgba(0,0,0,.2);border-radius:10px;border-left:4px solid #00d9ff}
+    .download-info{display:flex;flex-direction:column;gap:4px}
+    .download-name{font-weight:500}
+    .download-count{font-size:.85rem;color:#8892a0}
+    .btn-download{padding:10px 20px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#e8e8e8;font-size:.9rem;cursor:pointer;transition:all .2s ease;font-family:inherit}
+    .btn-download:hover{background:rgba(255,255,255,.2)}
+
+    .processing{display:none;text-align:center;padding:40px}
+    .processing.show{display:block}
+    .spinner{width:50px;height:50px;border:4px solid rgba(0,217,255,.2);border-top-color:#00d9ff;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .error-box{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:8px;padding:16px;margin-top:16px;display:none}
+    .error-box.show{display:block}
+    .error-box p{color:#ff6b6b}
+
+    .warn-box{background:rgba(255,193,7,.10);border:1px solid rgba(255,193,7,.35);border-radius:8px;padding:16px;margin-top:16px;display:none}
+    .warn-box.show{display:block}
+    .warn-box p{color:#ffc107;line-height:1.5}
+
+    footer{text-align:center;margin-top:30px;color:#6b7280;font-size:.8rem}
+    @media (max-width: 760px){
+      .stats-debug{grid-template-columns:repeat(2,1fr)}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📍 既存客マッピング（本店）</h1>
+      <p class="subtitle">Google マイマップ用：既存客データのみ生成（中止客は出力しません）</p>
+    </header>
+
+    <div class="card">
+      <div class="card-title"><span class="num">1</span>ファイルをアップロード</div>
+      <div class="upload-area" id="uploadArea">
+        <div class="upload-icon">📁</div>
+        <p class="upload-text"><strong>クリック</strong>または<strong>ドラッグ＆ドロップ</strong><br>でファイルを選択（CSV / TSV / Excel）</p>
+      </div>
+      <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.tsv,.txt">
+      <div class="file-info" id="fileInfo">
+        <span class="file-name" id="fileName"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="num">2</span>既存客データ生成</div>
+      <button class="btn btn-primary" id="generateBtn" disabled>既存客マッピングファイルを生成</button>
+      <div class="error-box" id="errorBox"><p id="errorMessage"></p></div>
+      <div class="warn-box" id="warnBox"><p id="warnMessage"></p></div>
+    </div>
+
+    <div class="processing" id="processing">
+      <div class="spinner"></div>
+      <p>データを処理中...</p>
+    </div>
+
+    <div class="results" id="results">
+      <div class="card">
+        <div class="card-title"><span class="num">✓</span>生成完了</div>
+
+        <div class="stats-debug">
+          <div class="stat-box">
+            <div class="stat-value" id="debugTotal">0</div>
+            <div class="stat-label">全行数</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="debugPlusCodeMemo">0</div>
+            <div class="stat-label">ﾌﾟﾗｽｺｰﾄﾞ行</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="debugValidPlusCode">0</div>
+            <div class="stat-label">有効コード</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="debugConverted">0</div>
+            <div class="stat-label">変換成功</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value main" id="debugExisting">0</div>
+            <div class="stat-label">既存客（出力）</div>
+          </div>
+        </div>
+
+        <div class="download-list" id="downloadList"></div>
+      </div>
+    </div>
+
+    <footer>
+      <p>元データ保持（列の値は変更しません）/ 備考列（プラスコード）だけ加工</p>
+      <p>1ファイルあたり最大2000件（ヘッダー除く）/ ルート名称をまたいで分割しません</p>
+    </footer>
+  </div>
+
+  <script>
+    // ==================== Plus Code処理 ====================
+    const ANCHOR_CODE = '8Q6H3929+WCR';
+    const CANDIDATE_PREFIXES = ['8Q6H', '8Q5H'];
+    const OLC_ALPHABET = '23456789CFGHJMPQRVWX';
+    const OLC_SEPARATOR = '+';
+    const __OLC_RE = new RegExp('[' + OLC_ALPHABET + '0]{2,15}\\+[' + OLC_ALPHABET + '0]{2,15}', 'i');
+    let __ANCHOR_CACHE = null;
+
+    function nfkcCompact(v) {
+      return String(v ?? '')
+        .normalize('NFKC')
+        .replace(/[\s\u3000]+/g, '')
+        .toUpperCase();
+    }
+
+    function extractPlusCode(raw) {
+      const s = nfkcCompact(raw);
+      const m = s.match(__OLC_RE);
+      return m ? m[0] : '';
+    }
+
+    function canonicalizePlusCode(code) {
+      if (!code) return '';
+      let s = nfkcCompact(code);
+      const m = s.match(__OLC_RE);
+      if (!m) return '';
+      s = m[0];
+
+      const idx = s.indexOf(OLC_SEPARATOR);
+      if (idx === -1) return '';
+
+      if (idx < 8) {
+        const area = s.slice(0, idx).padEnd(8, '0');
+        const grid = s.slice(idx + 1);
+        return area + '+' + grid;
+      }
+      if (idx > 8) {
+        const joined = s.replace('+', '');
+        const area = joined.slice(0, 8).padEnd(8, '0');
+        const grid = joined.slice(8);
+        return area + '+' + grid;
+      }
+      return s;
+    }
+
+    function decodeFullPlusCode(fullInput) {
+      const full = canonicalizePlusCode(fullInput);
+      if (!full) throw new Error('Invalid Plus Code: ' + fullInput);
+
+      const area = full.slice(0, 8);
+      const grid = full.slice(9);
+
+      const validAreaRe = new RegExp('^[' + OLC_ALPHABET + '0]{8}$');
+      const validGridRe = new RegExp('^[' + OLC_ALPHABET + '0]*$');
+      if (!validAreaRe.test(area)) throw new Error('Invalid area part: ' + full);
+      if (!validGridRe.test(grid)) throw new Error('Invalid grid part: ' + full);
+
+      let latLo = -90.0, lngLo = -180.0;
+      let pairRes = 20.0;
+      let latRes = 20.0, lngRes = 20.0;
+
+      for (let i = 0; i < 8; i += 2) {
+        latRes = pairRes;
+        lngRes = pairRes;
+
+        const cLat = area[i];
+        const cLng = area[i + 1];
+        const vLat = (cLat === '0') ? 0 : OLC_ALPHABET.indexOf(cLat);
+        const vLng = (cLng === '0') ? 0 : OLC_ALPHABET.indexOf(cLng);
+        if (vLat < 0 || vLng < 0) throw new Error('Invalid character in area: ' + full);
+
+        latLo += vLat * pairRes;
+        lngLo += vLng * pairRes;
+        pairRes /= 20.0;
+      }
+
+      for (let k = 0; k < grid.length; k++) {
+        const c = grid[k];
+        const v = (c === '0') ? 0 : OLC_ALPHABET.indexOf(c);
+        if (v < 0) throw new Error('Invalid character in grid: ' + full);
+
+        const row = Math.floor(v / 4);
+        const col = v % 4;
+        latLo += row * (latRes / 5.0);
+        lngLo += col * (lngRes / 4.0);
+        latRes /= 5.0;
+        lngRes /= 4.0;
+      }
+
+      return { lat: latLo + latRes / 2.0, lng: lngLo + lngRes / 2.0 };
+    }
+
+    function haversineMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function getAnchorLatLng() {
+      if (__ANCHOR_CACHE) return __ANCHOR_CACHE;
+      __ANCHOR_CACHE = decodeFullPlusCode(ANCHOR_CODE);
+      return __ANCHOR_CACHE;
+    }
+
+    function recoverWithAnchorSnap(raw) {
+      const extracted = extractPlusCode(raw);
+      if (!extracted) return '';
+
+      const anchor = getAnchorLatLng();
+      const canon = canonicalizePlusCode(extracted);
+
+      // ローカル短縮（例: 3929+WCR / 29M6+HW / 5FX4+WCV など）
+      const plusPos = extracted.indexOf('+');
+      const looksLocal = plusPos > 0 && plusPos <= 4 && !CANDIDATE_PREFIXES.some(p => canon.startsWith(p));
+
+      if (looksLocal) {
+        let best = '', bestDist = Infinity;
+        for (const pfx of CANDIDATE_PREFIXES) {
+          const full = canonicalizePlusCode(pfx + extracted);
+          try {
+            const pt = decodeFullPlusCode(full);
+            const d = haversineMeters(anchor.lat, anchor.lng, pt.lat, pt.lng);
+            if (d < bestDist) { bestDist = d; best = full; }
+          } catch (e) {}
+        }
+        return best || canon;
+      }
+
+      // すでに 8Q6H/8Q5H なら入替比較
+      if (CANDIDATE_PREFIXES.some(p => canon.startsWith(p))) {
+        const orig = canon;
+        const origPrefix = orig.slice(0, 4);
+        const altPrefix = (origPrefix === CANDIDATE_PREFIXES[0]) ? CANDIDATE_PREFIXES[1] : CANDIDATE_PREFIXES[0];
+        const alt = canonicalizePlusCode(altPrefix + orig.slice(4));
+
+        try {
+          const p1 = decodeFullPlusCode(orig);
+          const d1 = haversineMeters(anchor.lat, anchor.lng, p1.lat, p1.lng);
+          const p2 = decodeFullPlusCode(alt);
+          const d2 = haversineMeters(anchor.lat, anchor.lng, p2.lat, p2.lng);
+          return (d2 < d1) ? alt : orig;
+        } catch {
+          return orig;
+        }
+      }
+
+      return canon;
+    }
+
+    function formatForMyMap(rawCode) {
+      const full = recoverWithAnchorSnap(rawCode);
+      if (!full) return '';
+
+      // 対象地域なら先頭4文字を落として短縮表示
+      const isTarget = CANDIDATE_PREFIXES.some(p => full.startsWith(p));
+      const shortCode = isTarget ? full.slice(4) : full;
+
+      return shortCode + ' 山口県';
+    }
+
+    // ==================== CSV/TSV 読み込み（元データ保持） ====================
+    function detectCsvEncodingAndDecode(arrayBuffer) {
+      const u8 = new Uint8Array(arrayBuffer);
+      const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(u8);
+      const looksBroken = (utf8.match(/\uFFFD/g) || []).length > 5;
+      if (!looksBroken) return utf8;
+      try {
+        return new TextDecoder('shift_jis', { fatal: false }).decode(u8);
+      } catch {
+        return utf8;
+      }
+    }
+
+    function detectDelimiter(text) {
+      const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim() !== '').slice(0, 5);
+      const sample = lines.join('\n');
+
+      const count = (ch) => (sample.split(ch).length - 1);
+      const tabs = count('\t');
+      const commas = count(',');
+      const semis = count(';');
+
+      if (tabs >= commas && tabs >= semis && tabs > 0) return '\t';
+      if (commas >= semis && commas > 0) return ',';
+      if (semis > 0) return ';';
+      return ',';
+    }
+
+    function parseDelimited(text, delimiter) {
+      const rows = [];
+      let row = [];
+      let cur = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        const next = text[i + 1];
+
+        if (inQuotes) {
+          if (c === '"' && next === '"') {
+            cur += '"';
+            i++;
+          } else if (c === '"') {
+            inQuotes = false;
+          } else {
+            cur += c;
+          }
+          continue;
+        }
+
+        if (c === '"') { inQuotes = true; continue; }
+
+        if (c === delimiter) {
+          row.push(cur);
+          cur = '';
+          continue;
+        }
+
+        if (c === '\n') {
+          row.push(cur);
+          rows.push(row);
+          row = [];
+          cur = '';
+          continue;
+        }
+        if (c === '\r') {
+          if (next === '\n') i++;
+          row.push(cur);
+          rows.push(row);
+          row = [];
+          cur = '';
+          continue;
+        }
+
+        cur += c;
+      }
+
+      row.push(cur);
+      rows.push(row);
+
+      while (rows.length && rows[rows.length - 1].every(x => String(x ?? '').trim() === '')) rows.pop();
+      return rows;
+    }
+
+    function findHeaderRow(rows) {
+      const maxCheck = Math.min(rows.length, 30);
+      for (let i = 0; i < maxCheck; i++) {
+        if (rows[i] && rows[i].some(cell => String(cell ?? '').trim() !== '')) return i;
+      }
+      return 0;
+    }
+
+    function padRow(row, len) {
+      const r = Array.isArray(row) ? row.slice() : [];
+      while (r.length < len) r.push('');
+      return r;
+    }
+
+    // ==================== 停止日判定（既存客判定のみに使用：停止日が「解釈できる」なら中止扱いで除外） ====================
+    function tryParseStopDate(v) {
+      if (v === null || v === undefined) return null;
+      if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+
+      const s = String(v).trim();
+      if (!s) return null;
+
+      const t = s.normalize('NFKC');
+      const d = new Date(t);
+      if (!isNaN(d.getTime())) return d;
+      return null;
+    }
+
+    // ==================== 列検出（まず完全一致、なければ部分一致） ====================
+    function findColExact(headers, keywords) {
+      const hn = headers.map(h => nfkcCompact(h));
+      for (let i = 0; i < hn.length; i++) {
+        if (keywords.some(k => hn[i] === nfkcCompact(k))) return i;
+      }
+      return -1;
+    }
+    function findColIncludes(headers, keywords) {
+      const hn = headers.map(h => nfkcCompact(h));
+      for (let i = 0; i < hn.length; i++) {
+        if (keywords.some(k => hn[i].includes(nfkcCompact(k)))) return i;
+      }
+      return -1;
+    }
+    function findColSmart(headers, exactKeywords, fallbackKeywords) {
+      const a = findColExact(headers, exactKeywords);
+      if (a >= 0) return a;
+      return findColIncludes(headers, fallbackKeywords ?? exactKeywords);
+    }
+
+    // ==================== メイン処理 ====================
+    let uploadedData = null;
+    let headers = [];
+    let inputDelimiter = ','; // TSVなら'\t'を保持して出力にも使う
+
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const generateBtn = document.getElementById('generateBtn');
+    const processing = document.getElementById('processing');
+    const results = document.getElementById('results');
+    const downloadList = document.getElementById('downloadList');
+
+    const errorBox = document.getElementById('errorBox');
+    const errorMessage = document.getElementById('errorMessage');
+    const warnBox = document.getElementById('warnBox');
+    const warnMessage = document.getElementById('warnMessage');
+
+    const debugTotal = document.getElementById('debugTotal');
+    const debugPlusCodeMemo = document.getElementById('debugPlusCodeMemo');
+    const debugValidPlusCode = document.getElementById('debugValidPlusCode');
+    const debugConverted = document.getElementById('debugConverted');
+    const debugExisting = document.getElementById('debugExisting');
+
+    function showError(msg) {
+      errorMessage.textContent = msg;
+      errorBox.classList.add('show');
+    }
+    function hideError() {
+      errorBox.classList.remove('show');
+    }
+    function showWarn(msg) {
+      warnMessage.textContent = msg;
+      warnBox.classList.add('show');
+    }
+    function hideWarn() {
+      warnBox.classList.remove('show');
+    }
+
+    uploadArea.addEventListener('click', () => fileInput.click());
+    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    function handleFile(file) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!['csv','xlsx','xls','tsv','txt'].includes(ext)) {
+        showError('CSV / TSV / Excel ファイルを選択してください');
+        return;
+      }
+
+      hideError();
+      hideWarn();
+      fileName.textContent = `📄 ${file.name}`;
+      fileInfo.classList.add('show');
+      results.classList.remove('show');
+      generateBtn.disabled = true;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          let rows;
+
+          if (ext === 'xlsx' || ext === 'xls') {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array', cellDates: false });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+            inputDelimiter = ','; // ExcelはCSV出力
+          } else {
+            const text = detectCsvEncodingAndDecode(e.target.result);
+            inputDelimiter = (ext === 'tsv') ? '\t' : detectDelimiter(text);
+            rows = parseDelimited(text, inputDelimiter);
+          }
+
+          if (!rows || rows.length < 2) {
+            showError('データが空です');
+            return;
+          }
+
+          const headerRowIndex = findHeaderRow(rows);
+          headers = rows[headerRowIndex] || [];
+          uploadedData = rows.slice(headerRowIndex + 1);
+
+          if (!headers || headers.length === 0) {
+            showError('ヘッダー行が見つかりませんでした');
+            return;
+          }
+
+          generateBtn.disabled = false;
+        } catch (err) {
+          showError('ファイルの読み込みに失敗しました: ' + err.message);
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
+    }
+
+    generateBtn.addEventListener('click', () => {
+      if (!uploadedData) return;
+      hideError();
+      hideWarn();
+      processing.classList.add('show');
+      results.classList.remove('show');
+
+      setTimeout(() => {
+        try {
+          processData();
+        } catch (err) {
+          showError('処理中にエラーが発生しました: ' + err.message);
+          processing.classList.remove('show');
+        }
+      }, 30);
+    });
+
+    function processData() {
+      // 必須列（あなたの例に合わせて）
+      const stopDateCol = findColSmart(headers, ['停止日'], ['停止日']);
+      const memoNameCol = findColSmart(headers, ['メモ名'], ['メモ名']);
+      const plusCodeCol = findColSmart(headers, ['備考'], ['備考']);
+      const routeNameCol = findColSmart(headers, ['ルート名称'], ['ルート名称','ルート名']); // まず「ルート名称」を優先
+
+      if (stopDateCol < 0 || memoNameCol < 0 || plusCodeCol < 0 || routeNameCol < 0) {
+        processing.classList.remove('show');
+        showError('必要な列（停止日・メモ名・備考・ルート名称）が見つかりません。ヘッダー名を確認してください。');
+        return;
+      }
+
+      const nCols = Math.max(headers.length, ...uploadedData.map(r => (r || []).length));
+
+      // 既存客（停止日が空 or 解釈不能）だけを抽出
+      // さらに「メモ名=ﾌﾟﾗｽｺｰﾄﾞ」相当の行だけ採用し、備考のプラスコードを加工
+      let debugInfo = { total: uploadedData.length, plusCodeMemo: 0, validPlusCode: 0, converted: 0, existing: 0 };
+
+      // ルート名称ごとに “絶対に分割しない” ため、ルート単位でグルーピング（同一ルートは必ず同一ファイル）
+      const routeMap = new Map(); // key -> { label, rows: [] }
+      const routeOrder = [];      // keyの登場順
+
+      for (const rawRow of uploadedData) {
+        const row = padRow(rawRow, nCols);
+
+        // メモ名がプラスコード行だけ
+        const memoNorm = nfkcCompact(row[memoNameCol] ?? '');
+        const isPlusCodeMemo =
+          memoNorm === 'ﾌﾟﾗｽｺｰﾄﾞ' ||
+          memoNorm.includes('プラスコード') ||
+          memoNorm.includes('PLUSCODE') ||
+          (memoNorm.includes('PLUS') && memoNorm.includes('CODE'));
+
+        if (!isPlusCodeMemo) continue;
+        debugInfo.plusCodeMemo++;
+
+        // 備考からプラスコード抽出
+        const extracted = extractPlusCode(row[plusCodeCol] ?? '');
+        if (!extracted) continue;
+        debugInfo.validPlusCode++;
+
+        const formatted = formatForMyMap(extracted);
+        if (!formatted) continue;
+        debugInfo.converted++;
+
+        // ★元行を“そのままコピー”し、備考列だけ置換（他列は一切触らない）
+        const newRow = row.slice();
+        newRow[plusCodeCol] = formatted;
+
+        // 停止日が「日付として解釈できる」なら中止扱い→出力しない
+        const stopDate = tryParseStopDate(row[stopDateCol]);
+        if (stopDate) continue;
+
+        // 既存客として採用
+        debugInfo.existing++;
+
+        // ルート名称ごとにまとめる
+        const routeLabel = String(row[routeNameCol] ?? '').trim();
+        const routeKey = nfkcCompact(routeLabel || '(ルート名なし)');
+
+        if (!routeMap.has(routeKey)) {
+          routeMap.set(routeKey, { label: routeLabel || '(ルート名なし)', rows: [] });
+          routeOrder.push(routeKey);
+        }
+        routeMap.get(routeKey).rows.push(newRow);
+      }
+
+      // UI反映
+      debugTotal.textContent = debugInfo.total.toLocaleString();
+      debugPlusCodeMemo.textContent = debugInfo.plusCodeMemo.toLocaleString();
+      debugValidPlusCode.textContent = debugInfo.validPlusCode.toLocaleString();
+      debugConverted.textContent = debugInfo.converted.toLocaleString();
+      debugExisting.textContent = debugInfo.existing.toLocaleString();
+
+      downloadList.innerHTML = '';
+
+      if (debugInfo.existing === 0) {
+        processing.classList.remove('show');
+        results.classList.add('show');
+        showError('抽出が0件でした。メモ名が「ﾌﾟﾗｽｺｰﾄﾞ」行が無い、停止日が全て入っている、備考に「+」を含むコードが無い等の可能性があります。');
+        return;
+      }
+
+      const maxRows = 2000; // データ行（ヘッダー除く）
+      const { chunks, oversizeRoutes } = splitDataByRoute(routeOrder, routeMap, maxRows);
+
+      // 警告表示（ルート単体が2000超え）
+      if (oversizeRoutes.length) {
+        const lines = oversizeRoutes.map(o => `・${o.label}：${o.count.toLocaleString()}件`).join('\n');
+        showWarn(
+          '【注意】以下のルート名称は単体で2000件を超えています。\n' +
+          '「ルート名称を分断しない」を優先したため、そのファイルは2000件超えになります。\n\n' + lines
+        );
+      } else {
+        hideWarn();
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const delim = inputDelimiter || ',';
+      const ext = (delim === '\t') ? 'tsv' : 'csv';
+
+      chunks.forEach((chunk, i) => {
+        const fname = (chunks.length === 1)
+          ? `既存客マッピング_本店_${today}.${ext}`
+          : `既存客マッピング_本店_${today}_${i + 1}.${ext}`;
+        addDownloadItem(fname, chunk);
+      });
+
+      processing.classList.remove('show');
+      results.classList.add('show');
+
+      console.log('列インデックス', { stopDateCol, memoNameCol, plusCodeCol, routeNameCol, inputDelimiter });
+      console.log('処理結果', debugInfo, { files: chunks.length, oversizeRoutes });
+    }
+
+    // ルート名称単位で分割（同一ルートは絶対に同一ファイル）
+    function splitDataByRoute(routeOrder, routeMap, maxRows) {
+      const chunks = [];
+      let cur = [];
+      const oversizeRoutes = [];
+
+      for (const key of routeOrder) {
+        const group = routeMap.get(key);
+        if (!group) continue;
+
+        const gRows = group.rows || [];
+        const gCount = gRows.length;
+
+        // ルート単体で超過
+        if (gCount > maxRows) {
+          oversizeRoutes.push({ label: group.label, count: gCount });
+        }
+
+        // 追加すると超える場合は、先に確定して次へ
+        if (cur.length > 0 && (cur.length + gCount) > maxRows) {
+          chunks.push(cur);
+          cur = [];
+        }
+
+        // ルートは分割しない（丸ごと入れる）
+        cur = cur.concat(gRows);
+      }
+
+      if (cur.length > 0) chunks.push(cur);
+      return { chunks, oversizeRoutes };
+    }
+
+    function addDownloadItem(name, data) {
+      const item = document.createElement('div');
+      item.className = 'download-item';
+      item.innerHTML = `
+        <div class="download-info">
+          <span class="download-name">${name}</span>
+          <span class="download-count">${data.length.toLocaleString()} 件</span>
+        </div>
+        <button class="btn-download">ダウンロード</button>
+      `;
+      item.querySelector('.btn-download').addEventListener('click', () => downloadDelimited(name, data));
+      downloadList.appendChild(item);
+    }
+
+    // ★元データを変えない：日付変換など一切しない。文字列化して出力するだけ。
+    function downloadDelimited(filename, data) {
+      const nCols = Math.max(headers.length, ...data.map(r => (r || []).length));
+      const headerRow = padRow(headers, nCols);
+
+      const delim = inputDelimiter || ',';
+      const content = [headerRow, ...data.map(r => padRow(r, nCols))];
+      const text = content.map(row => stringifyRow(row, delim)).join('\n');
+
+      // Excel想定ならUTF-8 BOM付与
+      const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+      const mime = (delim === '\t') ? 'text/tab-separated-values;charset=utf-8' : 'text/csv;charset=utf-8';
+      const blob = new Blob([bom, text], { type: mime });
+
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    }
+
+    function stringifyRow(row, delim) {
+      return row.map(cell => {
+        let str = (cell === null || cell === undefined) ? '' : String(cell);
+
+        if (str.includes('"')) str = str.replace(/"/g, '""');
+        const mustQuote = str.includes(delim) || str.includes('\n') || str.includes('\r') || str.includes('"');
+        if (mustQuote) str = `"${str}"`;
+        return str;
+      }).join(delim);
+    }
+  </script>
+</body>
+</html>
